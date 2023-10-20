@@ -5,7 +5,7 @@
 #include "ThingsBoard.h"
 #include "DHT.h"
 #include <WiFi.h>
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_NeoPixel.h> // TODO remplacer par fastled
 
 // WIFI param
 #define WIFI_AP             "WIFI NAME"
@@ -13,6 +13,7 @@
 
 // See https://thingsboard.io/docs/getting-started-guides/helloworld/
 // to understand how to obtain an access token
+#define SENSOR_NAME         "C3Pico NAME"
 #define TOKEN               "THINGSBOARD TOKEN"
 #define THINGSBOARD_SERVER  "THINGSBOARD URL"
 
@@ -21,44 +22,48 @@
 
 // Settings
 #define LEDPIN    7 // LED Default pin on C3 Pico
-#define NUMPIXELS 1 // TODO remplacer par fastled
+#define NUMPIXELS 1 // LED Default pin on C3 Pico
 Adafruit_NeoPixel pixels(NUMPIXELS, LEDPIN, NEO_GRB + NEO_KHZ800);
 #define DHTPIN 6 // DHT PIN HERE
-#define DHTTYPE DHT22
+#define DHTTYPE DHT22 // DHT MODEL
 DHT dht(DHTPIN, DHTTYPE);
-#define UPLOADTIME 5000 // 5 secondes between update
+#define RUNTIME 120000 // 120 secondes between update
 
-// Initialize ThingsBoard client
+// Initialize ThingsBoard and Wifi
 WiFiClient espClient;
-// Initialize ThingsBoard instance
 ThingsBoard tb(espClient);
 // the Wifi radio's status
 int status = WL_IDLE_STATUS;
 
 void setup() {
-  // initialize serial for debugging
-  Serial.begin(SERIAL_DEBUG_BAUD);
-  dht.begin();
-  pixels.begin();
+  Serial.begin(SERIAL_DEBUG_BAUD); // initialize serial for debugging
+  dht.begin(); // initialize dht
 
+  // initialize NeoPixel (red booting and green when setup finished)
+  pixels.begin();
   pixels.clear();
   pixels.setPixelColor(0, pixels.Color(0, 1, 0));
   pixels.show();
-  String hostname = "C3Pico Client";
+
+  // initialize wifi
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
-  WiFi.setHostname(hostname.c_str()); //define hostname
+  String WIFI_SENSOR_NAME=SENSOR_NAME;
+  WiFi.setHostname(WIFI_SENSOR_NAME.c_str());
   WiFi.begin(WIFI_AP, WIFI_PASSWORD);
   InitWiFi();
+
   pixels.setPixelColor(0, pixels.Color(1, 0, 0));
   pixels.show();
 }
 
 void loop() {
-  delay(UPLOADTIME);
+  delay(RUNTIME);
+  // Start sending data, set neopixel to blue
   pixels.setPixelColor(0, pixels.Color(0, 0, 1));
   pixels.show();
-  delay(200);
+  delay(100);
 
+  // Temp and humidity
   float h = dht.readHumidity();
   float t = dht.readTemperature();
   if (isnan(h) || isnan(t)) {
@@ -66,40 +71,34 @@ void loop() {
     return;
   }
 
+  // Check/Connect wifi/thingsboard
   if (WiFi.status() != WL_CONNECTED) {
     reconnect();
   }
-
   if (!tb.connected()) {
-    // Connect to the ThingsBoard
-    Serial.print("Connecting to: ");
-    Serial.print(THINGSBOARD_SERVER);
-    Serial.print(" with token ");
-    Serial.println(TOKEN);
+    Serial.printf("Connecting to: %s with token %s\n", THINGSBOARD_SERVER, TOKEN);
     if (!tb.connect(THINGSBOARD_SERVER, TOKEN)) {
       Serial.println("Failed to connect");
       return;
     }
   }
 
+  // Everythings OK - start sending telemetry
   Serial.println("Sending data...");
-
-  // Uploads new telemetry to ThingsBoard using MQTT.
-  // See https://thingsboard.io/docs/reference/mqtt-api/#telemetry-upload-api
-  // for more details
 
   tb.sendTelemetryFloat("temp", t);
   tb.sendTelemetryFloat("hum", h);
   tb.loop();
+
+  // Go back to green and wait
   pixels.setPixelColor(0, pixels.Color(1, 0, 0));
   pixels.show();
 }
 
 void InitWiFi()
 {
-  Serial.println("Connecting to AP ...");
   // attempt to connect to WiFi network
-
+  Serial.println("Connecting to AP ...");
   WiFi.begin(WIFI_AP, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
